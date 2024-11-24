@@ -1,0 +1,364 @@
+---
+title: "assignment 4_Teona"
+author: "Teona"
+date: "2024-11-19"
+output: html_document
+---
+
+#In an R Markdown document, provide a summary of your final project. Include a link to the source data that you have compiled in your GitHub repository
+
+In this project I look for answers two main topics:
+
+1. How ideas, themes and adjectives have evolved by Moley over time? 
+2. What adjectives were used about Moley and how they changed over time?
+
+Specifically, I am interested in what ideas where the most popular by Moley and how they changed. At the same time, I wonder throughout those years, what were main narratives about Moley, what adjectives were people using about him in the papers that I am reading. 
+
+I am using R to identify frequent terms and specific keywords. I also plan to apply sentiment analysis to classify tone. I will use ggplot to visualize the trends in sentiments for overtime.
+
+#Spell out your content analysis plan, including preliminary work on a code book
+
+Economic Policy: The articles communicate Moley's ideas about economic policy's. I will track the frequency and context of using key words, such as "new deal" and "reform". 
+
+Ideological Stances: Tracking down Moley's and his his circle's ideological stances ("liberalism" and "conservatism") and how these positions evolved thruought the years and noting if any significant changes happened. 
+
+Character Names and Descriptions: The articles mention of some of the key names of the state actors. I will gather full names and brief descriptions of their roles and relationships with Moley. 
+
+Character ID: Give each character a unique 4-digit number, beginning with 0001. If a character appears in more than one episode, code him or her each time, but use the same ID number. 
+
+Adjectives about Moley: Moley became known as "the second strongest man in Washington". They would also refer him as "Columbia university professor", "Roosevelt's brain trust". I will explore how the adjectives related to Moley have been changing over the years. 
+
+
+#Provide a sample of the data and some descriptive statistics.
+
+Topic modeling - week 10
+
+```{r}
+install.packages("textdata")
+
+#I have downloaded this library for the first time. 
+```
+
+
+```{r}
+library(tidyverse)
+library(readtext)
+library(tidytext)
+library(textdata)
+
+
+setwd("/Users/teona/Desktop/text analysis/assignment4")
+
+folder_path <- "moley_texts" 
+txt_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
+
+
+read_all_texts <- function(folder_path = "moley_texts") {
+  if (!dir.exists(folder_path)) {
+    stop("Folder '", folder_path, "' not found!")
+  }
+
+ 
+  txt_files <- list.files(
+    path = folder_path,
+    pattern = "\\.txt$",
+    full.names = TRUE
+  )
+  
+  if (length(txt_files) == 0) {
+    stop("No .txt files found in folder '", folder_path, "'")
+  }
+
+  
+  text_data <- readtext(txt_files) %>%
+    as_tibble() %>%
+    mutate(
+      file_number = row_number(),
+      doc_id = basename(doc_id),
+      doc_id = str_remove(doc_id, "\\.txt$"),
+      year = as.numeric(str_extract(doc_id, "\\d{4}"))
+    )
+  
+  return(text_data)
+}
+
+
+text_data <- read_all_texts()
+
+cat("Sample of the data:
+")
+print(head(text_data))
+
+text_stats <- text_data %>%
+  mutate(
+    doc_length = nchar(text),
+    word_count = str_count(text, "\\w+")
+  ) %>%
+  summarise(
+    total_docs = n(),
+    avg_length = mean(doc_length),
+    avg_words = mean(word_count),
+    min_length = min(doc_length),
+    max_length = max(doc_length)
+  )
+
+cat("
+Descriptive Statistics:
+")
+print(text_stats)
+```
+
+
+```{r}
+read_all_texts <- function(folder_path = "moley_texts") {
+  if (!dir.exists(folder_path)) {
+    stop("Folder '", folder_path, "' not found!")
+  }
+  
+  txt_files <- list.files(
+    path = folder_path,
+    pattern = "\\.txt$",
+    full.names = TRUE
+  )
+  print(txt_files)  
+  
+  if (length(txt_files) == 0) {
+    stop("No .txt files found in folder '", folder_path, "'")
+  }
+  
+  text_data <- readtext(txt_files) %>%
+    as_tibble() %>%
+    mutate(
+      file_number = row_number(),
+      doc_id = basename(doc_id),
+      doc_id = str_remove(doc_id, "\\.txt$"),
+      year = as.numeric(str_extract(doc_id, "\\d{4}"))
+    )
+  
+  print(head(text_data))  
+  return(text_data)
+}
+
+analyze_sentiments <- function(text_data) {
+  if (nrow(text_data) == 0) {
+    stop("No text data provided for analysis")
+  }
+  
+
+  words_df <- text_data %>%
+    unnest_tokens(word, text) %>%
+    anti_join(stop_words)  
+  
+  print(head(words_df))  
+  
+
+  afinn_sentiment <- words_df %>%
+    inner_join(get_sentiments("afinn"), by = "word") %>%
+    group_by(doc_id, year) %>%
+    summarise(
+      afinn_score = sum(value),
+      word_count = n(),
+      afinn_normalized = afinn_score / word_count,
+      .groups = 'drop'
+    )
+  
+  bing_sentiment <- words_df %>%
+    inner_join(get_sentiments("bing"), by = "word") %>%
+    count(doc_id, year, sentiment) %>%
+    pivot_wider(names_from = sentiment, values_from = n, values_fill = 0)
+  
+
+  sentiment_results <- afinn_sentiment %>%
+    left_join(bing_sentiment, by = c("doc_id", "year"))
+  
+  print(head(sentiment_results))  
+  return(sentiment_results)
+}
+
+text_data <- read_all_texts("moley_texts")
+results <- analyze_sentiments(text_data)
+
+```
+
+```{r}
+
+install.packages("tm")
+
+```
+
+
+
+
+```{r}
+
+# Load necessary libraries
+library(tidyverse)
+library(tidytext)
+library(tm)
+
+
+folder_path <- "moley_texts"
+txt_files <- list.files(folder_path, pattern = "\\.txt$", full.names = TRUE)
+
+texts <- sapply(txt_files, readLines, USE.NAMES = FALSE) %>%
+  paste(collapse = " ")
+
+
+cleaned_text <- tolower(texts) %>%
+  str_replace_all("[^[:alpha:][:space:]]", "") %>%  
+  str_squish()  
+
+tokens <- unlist(str_split(cleaned_text, "\\s+"))
+
+data("stop_words")  
+filtered_tokens <- tokens[!tokens %in% stop_words$word]
+
+
+word_counts <- filtered_tokens %>%
+  table() %>%
+  as.data.frame() %>%
+  arrange(desc(Freq))
+
+# Rename columns for clarity
+colnames(word_counts) <- c("Word", "Frequency")
+
+# Display the top 10 most frequent terms
+head(word_counts, 10)
+
+
+
+
+
+
+
+```
+
+
+
+
+#Load the appropriate software libraries
+
+```{r}
+install.packages("RCurl")
+```
+
+
+```{r}
+library(tidyverse)
+library(pdftools)
+library(readtext)  
+library(stringr)  
+library(RCurl)
+```
+
+#Load the data
+```{r}
+setwd("/Users/teona/Desktop/text analysis/assignment4")
+
+read_all_texts <- function(folder_path = "moley_texts") {
+  if (!dir.exists(folder_path)) {
+    stop("Folder '", folder_path, "' not found!")
+  }
+  
+ 
+  txt_files <- list.files(
+    path = folder_path,
+    pattern = "\\.txt$",
+    full.names = TRUE
+  )
+  
+ 
+  if (length(txt_files) == 0) {
+    stop("No .txt files found in folder '", folder_path, "'")
+  }
+  
+ 
+  text_data <- readtext(txt_files) %>%
+    as_tibble()
+  
+  text_data <- text_data %>%
+    mutate(
+      file_number = row_number(),
+      doc_id = basename(doc_id),
+      doc_id = str_remove(doc_id, "\\.txt$")
+    )
+  
+  return(text_data)
+}
+
+
+try({
+  text_data <- read_all_texts()
+  
+ 
+  cat("\nSuccessfully loaded", nrow(text_data), "text files.\n")
+  cat("\nFirst few documents:\n")
+  print(head(text_data))
+})
+ 
+```
+
+
+#Using code, describe the number of rows and columns of the dataset
+```{r}
+
+dim(text_data) 
+
+str(text_data) 
+
+summary(text_data)
+
+
+nrow(text_data)  
+ncol(text_data)  
+```
+
+
+#Create ggplot chart showing the distribution of the data over time
+```{r}
+library(tidyverse)
+library(readtext)
+library(ggplot2)
+
+
+yearly_counts <- text_data %>%
+  mutate(
+    year = as.numeric(str_extract(doc_id, "\\d{4}"))  
+  ) %>%
+  count(year, name = "number_of_texts") %>%
+  arrange(year)
+
+print("Number of texts per year:")
+print(yearly_counts)
+
+
+ggplot(yearly_counts, aes(x = factor(year), y = number_of_texts)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.7) +
+  geom_text(aes(label = number_of_texts), vjust = -0.5) +  
+  theme_minimal() +
+  labs(
+    title = "Distribution of Newsweek Texts by Year",
+    subtitle = "Based on Newsweek's Articles",
+    x = "Year",
+    y = "Number of Articles",
+    caption = "Source: Moley Newsweek Dataset 
+    By: Teona Goderdzishvili"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
+  )
+
+ggsave("moley_texts_per_year.png", width = 12, height = 8, dpi = 300)
+
+```
+
+
+
+#Submit a link in Elms to a folder in your personal GitHub repository with the R Markdown document and the data.
+
+
+
